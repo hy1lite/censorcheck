@@ -33,7 +33,15 @@
 
 ## 🚀 Запуск
 
-Просто выполните команду:
-
+### 🌐 Короткая ссылка
 ```bash
 wget -qO- censorcheck.tlab.pw | bash
+```
+
+---
+
+### 🔧 Запуск (с GitHub)
+```bash
+wget -qO- https://raw.githubusercontent.com/Nokola-Tesla/IPerf3-Speed-Test-Script/main/censorcheck.sh | bash
+```
+
