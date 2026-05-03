@@ -3,6 +3,7 @@
 # -----------------------------------------
 # Censor-check script
 # Автор скрипта Nikola Tesla ©, по багам, вопросам пишите в ТГ https://t.me/tracerlab 
+# Некоторые функции экспериментальные
 # -----------------------------------------
 
 TIMEOUT=4
@@ -12,10 +13,26 @@ USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (K
 IP_VERSION=4
 PROXY=""
 VERBOSE=false
+DEBUG=false
 
-if [[ "$1" == "-v" ]]; then
-  VERBOSE=true
-fi
+RIPE_API_KEY="5a5edf32-179b-4783-b2a4-e96b0506ce36" 
+REALITY_SNI="max.ru"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--verbose)
+      VERBOSE=true
+      shift
+      ;;
+    -d|--debug)
+      DEBUG=true
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 DOMAINS=(
   "youtube.com"
@@ -35,7 +52,6 @@ DOMAINS=(
   "reddit.com"
   "twitch.tv"
   "netflix.com"
-#  "onlyfans.com"
   "rutracker.org"
   "nnmclub.to"
   "digitalocean.com"
@@ -71,7 +87,8 @@ DIM="\033[2;90m"
 
 DOMAIN_WIDTH=22
 LINE_SEP="----------------------------------------------------------------------"
-# В тестовом режиме
+
+# Чек на заглушки
 RKN_STUB_IPS=(
   "195.208.4.1"    # Ростелеком
   "195.208.5.1"    # Ростелеком
@@ -89,9 +106,8 @@ is_rkn_spoof() {
   return 1
 }
 
-# Инстал зависимостей
 install_missing_deps() {
-  local deps=("curl" "nslookup" "nc" "openssl" "date" "awk")
+  local deps=("curl" "nslookup" "nc" "openssl" "date" "awk" "python3")
   local missing=()
 
   for dep in "${deps[@]}"; do
@@ -113,23 +129,6 @@ install_missing_deps() {
     prefix="sudo "
   else
     echo "You are not root, and sudo is not available."
-    echo "Please run as root or install sudo first, or install dependencies manually:"
-    case "$(uname -s)" in
-      Linux*)
-        if grep -qi "arch" /etc/os-release 2>/dev/null; then
-          echo "  pacman -S --needed curl bind openbsd-netcat openssl coreutils gawk"
-        elif [ -f /etc/debian_version ] || grep -qi "ubuntu\|debian" /etc/os-release 2>/dev/null; then
-          echo "  apt update && apt install -y curl dnsutils netcat-openbsd openssl coreutils gawk"
-        elif [ -f /etc/fedora-release ] || grep -qi "fedora" /etc/os-release 2>/dev/null; then
-          echo "  dnf install -y curl bind-utils nc openssl coreutils gawk"
-        elif [ -f /etc/centos-release ] || grep -qi "centos\|rhel" /etc/os-release 2>/dev/null; then
-          echo "  dnf install -y curl bind-utils nc openssl coreutils gawk  # or yum if dnf not available"
-        fi
-        ;;
-      *)
-        echo "  Install: curl, dnsutils/bind-utils (for nslookup), netcat/nc (for nc), openssl, coreutils (for date), gawk (for awk)"
-        ;;
-    esac
     exit 1
   fi
 
@@ -146,15 +145,15 @@ install_missing_deps() {
     quiet_update_cmd="apt update -y -q"
     install_cmd="apt install -y"
     quiet_install_cmd="apt install -y -q"
-    # Debian
     for dep in "${missing[@]}"; do
       case "$dep" in
         curl) pkg_names+=("curl") ;;
         nslookup) pkg_names+=("dnsutils") ;;
-        nc) pkg_names+=("netcat-openbsd") ;;  # or netcat-traditional
+        nc) pkg_names+=("netcat-openbsd") ;;
         openssl) pkg_names+=("openssl") ;;
         date) pkg_names+=("coreutils") ;;
         awk) pkg_names+=("gawk") ;;
+        python3) pkg_names+=("python3") ;;
       esac
     done
   elif [ -f /etc/fedora-release ] || grep -qi "fedora" /etc/os-release 2>/dev/null; then
@@ -163,7 +162,6 @@ install_missing_deps() {
     quiet_update_cmd="dnf check-update -y --quiet"
     install_cmd="dnf install -y"
     quiet_install_cmd="dnf install -y --quiet"
-    # Fedora
     for dep in "${missing[@]}"; do
       case "$dep" in
         curl) pkg_names+=("curl") ;;
@@ -172,6 +170,7 @@ install_missing_deps() {
         openssl) pkg_names+=("openssl") ;;
         date) pkg_names+=("coreutils") ;;
         awk) pkg_names+=("gawk") ;;
+        python3) pkg_names+=("python3") ;;
       esac
     done
   elif [ -f /etc/centos-release ] || grep -qi "centos\|rhel" /etc/os-release 2>/dev/null; then
@@ -188,7 +187,6 @@ install_missing_deps() {
       install_cmd="yum install -y"
       quiet_install_cmd="yum install -y --quiet"
     fi
-    # CentOS/RHEL
     for dep in "${missing[@]}"; do
       case "$dep" in
         curl) pkg_names+=("curl") ;;
@@ -197,6 +195,7 @@ install_missing_deps() {
         openssl) pkg_names+=("openssl") ;;
         date) pkg_names+=("coreutils") ;;
         awk) pkg_names+=("gawk") ;;
+        python3) pkg_names+=("python3") ;;
       esac
     done
   elif [ -f /etc/arch-release ] || grep -qi "arch" /etc/os-release 2>/dev/null; then
@@ -205,7 +204,6 @@ install_missing_deps() {
     quiet_update_cmd="pacman -Sy --noconfirm -qq"
     install_cmd="pacman -S --noconfirm"
     quiet_install_cmd="pacman -S --noconfirm -qq"
-    # Arch Linux
     for dep in "${missing[@]}"; do
       case "$dep" in
         curl) pkg_names+=("curl") ;;
@@ -214,6 +212,7 @@ install_missing_deps() {
         openssl) pkg_names+=("openssl") ;;
         date) pkg_names+=("coreutils") ;;
         awk) pkg_names+=("gawk") ;;
+        python3) pkg_names+=("python3") ;;
       esac
     done
   else
@@ -221,11 +220,9 @@ install_missing_deps() {
     exit 1
   fi
 
-  ${prefix}${quiet_update_cmd} || { echo "Update failed."; exit 1; }
-
+  ${prefix}${quiet_update_cmd} >/dev/null 2>&1
   for pkg in "${pkg_names[@]}"; do
-    echo "install $pkg"
-    ${prefix}${quiet_install_cmd} "$pkg" || { echo "Installation of $pkg failed."; exit 1; }
+    ${prefix}${quiet_install_cmd} "$pkg" >/dev/null 2>&1
   done
 }
 
@@ -257,14 +254,14 @@ check_keyword_blocking() {
   local test_url="https://$domain"
   
   local dpi_response
-  dpi_response=$(curl -s -A "Suspicious-Agent TLS/1.3" --connect-timeout "$TIMEOUT" "$test_url" 2>/dev/null)
+  dpi_response=$(curl -s -A "Suspicious-Agent TLS/1.3" --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" "$test_url" 2>/dev/null)
   
   if echo "$dpi_response" | grep -qi "blocked\|forbidden\|access.denied\|roscomnadzor\|rkn\|firewall\|censorship\|prohibited\|restricted"; then
     return 0  
   fi
   
   local sni_code
-  sni_code=$(curl -s -o /dev/null --connect-timeout "$TIMEOUT" --resolve "$domain:443:192.0.2.1" "$test_url" -w "%{http_code}" 2>/dev/null)
+  sni_code=$(curl -s -o /dev/null --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" --resolve "$domain:443:192.0.2.1" "$test_url" -w "%{http_code}" 2>/dev/null)
   
   if [[ "$sni_code" =~ [45][0-9][0-9] || "$sni_code" == "000" ]]; then
     return 0 
@@ -303,7 +300,7 @@ check_domain() {
   local status_text="BLOCKED"
 
   local ips
-  ips=$(nslookup "$domain" 2>/dev/null | awk '/^Address: / && !/#/ {print $2}')
+  ips=$(timeout "$TIMEOUT" nslookup "$domain" 2>/dev/null | awk '/^Address: / && !/#/ {print $2}')
   
   if [[ -z "$ips" ]]; then
     block_type="DNS"
@@ -398,7 +395,7 @@ check_domain() {
       -H "Sec-Fetch-User: ?1" \
       -H "Connection: keep-alive" \
       --compressed \
-      --connect-timeout "$TIMEOUT" "https://$domain" 2>/dev/null)
+      --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" "https://$domain" 2>/dev/null)
     if echo "$ai_response" | grep -qi "sorry, you have been blocked\|you are unable to access\|not available in your region\|restricted in your country\|access denied due to location\|blocked in your area\|unable to load site\|if you are using a vpn\|Not Available"; then
       block_type="REGIONAL"
       http_code="000"  
@@ -438,7 +435,6 @@ animate() {
     "🤬        🔥💨"
   )
 
-  # РКН и блокировки :)
   local funny_texts=(
     "Роскомнадзор заблокировал сам себя. Ждем..."
     "Объясняем ТСПУ, что это просто картинки с котиками..."
@@ -493,10 +489,9 @@ for i in "${!DOMAINS[@]}"; do
   check_domain "$d" > "$TMPDIR_RESULTS/$i.txt" &
   job_pids+=($!)
 
-  if (( ${#job_pids[@]} >= MAX_PARALLEL )); then
-    wait "${job_pids[0]}" 2>/dev/null
-    job_pids=("${job_pids[@]:1}")
-  fi
+  while (( $(jobs -p | wc -l) > MAX_PARALLEL )); do
+    wait -n 2>/dev/null
+  done
 done
 
 wait "${job_pids[@]}" 2>/dev/null
@@ -522,20 +517,229 @@ done
 
 rm -rf "$TMPDIR_RESULTS"
 
-end_time=$(date +%s)
-elapsed_time=$((end_time - start_time))
-elapsed_minutes=$((elapsed_time / 60))
-elapsed_seconds=$((elapsed_time % 60))
-
 total_domains=${#DOMAINS[@]}
 
 echo "$LINE_SEP"
 printf "${GREEN}OK: %d${RESET}  ${RED}BLOCKED: %d${RESET}  ${YELLOW}PARTIAL: %d${RESET}  ${DIM}Total: %d${RESET}\n" \
   "$count_ok" "$count_blocked" "$count_partial" "$total_domains"
+
+# Чекаем IP сервера нужен для Atlas
+CURRENT_IP=$(curl -s -4 --connect-timeout 3 https://api.ipify.org 2>/dev/null)
+
+if [[ -n "$CURRENT_IP" ]] && [[ -n "$RIPE_API_KEY" ]]; then
+  echo "$LINE_SEP"
+  
+  # Чекер 443 порта, нужен для Atlas
+  if ! ss -tuln 2>/dev/null | grep -qE "(0\.0\.0\.0|\*|$CURRENT_IP):443\b"; then
+    echo -e "${DIM}Радар ТСПУ отменен. Для корректной проверки запустите VPN (Xray/3X-UI)${RESET}"
+  else
+    echo -e "Опрос сетей РФ: РТК, МТС, МГТС, Билайн, Corbina, ТТК, РТК-Юг (Сочи)"
+    
+    TMP_ATLAS=$(mktemp)
+    TMP_ATLAS_DEBUG=$(mktemp)
+    python3 -c "
+import sys, json, time, urllib.request
+
+api_key = sys.argv[1]
+target_ip = sys.argv[2]
+sni = sys.argv[3]
+debug = (len(sys.argv) > 4 and sys.argv[4] == 'true')
+
+def dlog(msg):
+    if debug:
+        print(f'[DEBUG] {msg}', file=sys.stderr, flush=True)
+
+dlog(f'target_ip={target_ip} sni={sni}')
+
+url = 'https://atlas.ripe.net/api/v2/measurements/'
+data = {
+    'definitions': [{
+        'target': target_ip, 
+        'description': 'Reality TLS Handshake',
+        'type': 'sslcert',
+        'port': 443,
+        'hostname': sni,
+        'af': 4
+    }],
+    'probes': [
+        {'requested': 4, 'type': 'asn', 'value': 12389, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 8402,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 25513, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 8359,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 3216,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 3, 'type': 'asn', 'value': 20485, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 1, 'type': 'asn', 'value': 25490, 'tags': {'include': ['system-ipv4-works']}}
+    ],
+    'is_oneoff': True
+}
+
+req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), 
+                             headers={'Content-Type': 'application/json', 'Authorization': f'Key {api_key}'})
+try:
+    with urllib.request.urlopen(req) as response:
+        resp_data = json.loads(response.read().decode())
+        msm_id = resp_data['measurements'][0]
+        dlog(f'measurement_id={msm_id}')
+except Exception as e:
+    dlog(f'API create error: {type(e).__name__}: {e}')
+    print('ERROR API_FAIL')
+    sys.exit(0)
+
+results_url = f'https://atlas.ripe.net/api/v2/measurements/{msm_id}/results/'
+results = []
+start_time = time.time()
+
+for attempt in range(25):
+    time.sleep(2)
+    try:
+        with urllib.request.urlopen(results_url) as response:
+            results = json.loads(response.read().decode())
+            elapsed = int(time.time() - start_time)
+            dlog(f'poll {attempt+1}/25 [{elapsed}s]: results={len(results)}/24')
+            if len(results) >= 24: 
+                break
+    except Exception as e:
+        dlog(f'poll {attempt+1} error: {type(e).__name__}: {e}')
+
+if debug:
+    dlog(f'FINAL: total={len(results)} after {int(time.time()-start_time)}s')
+    for i, probe in enumerate(results):
+        prb_id = probe.get('prb_id', '?')
+        asn = probe.get('asn', '?')
+        keys = [k for k in ('cert','method','alert','err') if k in probe]
+        err = probe.get('err', '')
+        dlog(f'  probe[{i}] prb_id={prb_id} asn={asn} keys={keys} err={err!r}')
+
+if not results:
+    print('ERROR NO_DATA')
+    sys.exit(0)
+
+blocked = 0
+for probe in results:
+    if 'cert' in probe or 'method' in probe or 'alert' in probe:
+        pass 
+    else:
+        blocked += 1 
+
+total = len(results)
+success = total - blocked
+print(f'OK {total} {success} {blocked}')
+    " "$RIPE_API_KEY" "$CURRENT_IP" "$REALITY_SNI" "$DEBUG" > "$TMP_ATLAS" 2>"$TMP_ATLAS_DEBUG" &
+    
+    ATLAS_PID=$!
+
+    wave=(" " "▂" "▃" "▄" "▅" "▆" "▇" "█" "▇" "▆" "▅" "▄" "▃" "▂")
+    wave_len=${#wave[@]}
+    i=0
+    
+    tput civis 2>/dev/null 
+    
+    while kill -0 $ATLAS_PID 2>/dev/null; do
+      pulse=""
+      for (( k=0; k<8; k++ )); do
+        idx=$(( (i + k * 2) % wave_len ))
+        case $(( k % 4 )) in
+          0) pulse+="${CYAN}${wave[$idx]}${RESET}"  ;;
+          1) pulse+="${BLUE}${wave[$idx]}${RESET}"  ;;
+          2) pulse+="${CYAN}${wave[$idx]}${RESET}"  ;;
+          3) pulse+="${GREEN}${wave[$idx]}${RESET}" ;;
+        esac
+      done
+      printf "\r${CYAN}Запуск радара ТСПУ (Ожидайте проверки)${RESET} %b\e[K" "$pulse"
+      sleep 0.1
+      ((i++))
+    done
+    
+    wait $ATLAS_PID
+    tput cnorm 2>/dev/null 
+    
+    printf "\r${CYAN}Запуск радара ТСПУ${RESET}\e[K\n"
+
+    ATLAS_RESULT=$(cat "$TMP_ATLAS")
+    rm -f "$TMP_ATLAS"
+
+    STATUS=$(echo "$ATLAS_RESULT" | awk '{print $1}')
+    
+    if [[ "$STATUS" == "OK" ]]; then
+      TOTAL_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $2}')
+      SUCCESS_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $3}')
+      BLOCKED_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $4}')
+      
+      if (( TOTAL_PROBES > 0 )); then
+        SUCCESS_PERCENT=$(( SUCCESS_PROBES * 100 / TOTAL_PROBES ))
+      else
+        SUCCESS_PERCENT=0
+      fi
+      
+      if (( SUCCESS_PERCENT == 100 )); then
+        COLOR=$GREEN
+        STAT_TEXT="ПОЛНЫЙ ДОСТУП ИЗ РФ"
+      elif (( SUCCESS_PERCENT > 50 )); then
+        COLOR=$YELLOW
+        STAT_TEXT="ЧАСТИЧНАЯ БЛОКИРОВКА (Дропы у части провайдеров)"
+      else
+        COLOR=$RED
+        STAT_TEXT="КРИТИЧНАЯ БЛОКИРОВКА ТСПУ (IP недоступен)"
+      fi
+
+      echo -e "Зондов ответило: ${CYAN}${TOTAL_PROBES}${RESET} | Пробились: ${GREEN}${SUCCESS_PROBES}${RESET} | Заблокированы: ${RED}${BLOCKED_PROBES}${RESET}"
+      echo -e "ТСПУ Статус: ${COLOR}${SUCCESS_PERCENT}% ${STAT_TEXT}${RESET}"
+      
+    else
+      echo -e "${YELLOW}Не удалось получить данные.${RESET}"
+    fi
+
+    if $DEBUG && [[ -s "$TMP_ATLAS_DEBUG" ]]; then
+      echo "$LINE_SEP"
+      echo -e "${CYAN}[DEBUG] RIPE Atlas log:${RESET}"
+      cat "$TMP_ATLAS_DEBUG"
+    fi
+    rm -f "$TMP_ATLAS_DEBUG"
+  fi
+fi
+
 echo "$LINE_SEP"
+
+end_time=$(date +%s)
+elapsed_time=$((end_time - start_time))
+elapsed_minutes=$((elapsed_time / 60))
+elapsed_seconds=$((elapsed_time % 60))
+
 if (( elapsed_minutes > 0 )); then
   echo "Test completed in ${elapsed_minutes}m ${elapsed_seconds}s."
 else
   echo "Test completed in ${elapsed_seconds}s."
 fi
+
+if $DEBUG; then
+  echo "$LINE_SEP"
+  echo -e "${CYAN}=== DEBUG INFO ===${RESET}"
+  echo "Script:        $0"
+  echo "Bash version:  $BASH_VERSION"
+  echo "OS:            $(uname -a 2>/dev/null || echo 'n/a')"
+  echo "Date:          $(date)"
+  echo "Public IP:     ${CURRENT_IP:-not detected}"
+  echo "Reality SNI:   $REALITY_SNI"
+  echo "Total domains: ${#DOMAINS[@]}"
+  echo "Max parallel:  $MAX_PARALLEL"
+  echo "Timeout:       ${TIMEOUT}s"
+  echo "Retries:       $RETRIES"
+  echo "Elapsed:       ${elapsed_time}s"
+  echo
+  echo "--- Listening ports (ss -tlnp | head -20) ---"
+  ss -tlnp 2>/dev/null | head -20 || echo 'ss not available'
+  echo
+  echo "--- Tools versions ---"
+  echo "curl:    $(curl --version 2>/dev/null | head -1)"
+  echo "openssl: $(openssl version 2>/dev/null)"
+  echo "python3: $(python3 --version 2>/dev/null)"
+  echo "nc:      $(nc -h 2>&1 | head -1)"
+  echo
+  echo "--- DNS test (nslookup google.com) ---"
+  nslookup google.com 2>&1 | head -10
+  echo
+  echo "--- Ping test (1.1.1.1) ---"
+  ping -c 2 -W 2 1.1.1.1 2>&1 | tail -5
+fi
+
 echo -e "Follow: $(tput setaf 6)https://t.me/tracerlab$(tput sgr0)"
