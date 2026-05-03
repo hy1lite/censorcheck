@@ -676,7 +676,7 @@ print(f'OK {total} {success} {blocked}')
         STAT_TEXT="ПОЛНЫЙ ДОСТУП ИЗ РФ"
       elif (( SUCCESS_PERCENT > 50 )); then
         COLOR=$YELLOW
-        STAT_TEXT="ЧАСТИЧНАЯ БЛОКИРОВКА (Дропы у части провайдеров)"
+        STAT_TEXT="ВОЗМОЖНАЯ БЛОКИРОВКА IP (Дропы у части провайдеров)"
       else
         COLOR=$RED
         STAT_TEXT="КРИТИЧНАЯ БЛОКИРОВКА ТСПУ (IP недоступен)"
