@@ -519,12 +519,20 @@ rm -rf "$TMPDIR_RESULTS"
 
 total_domains=${#DOMAINS[@]}
 
-echo "$LINE_SEP"
-printf "${GREEN}OK: %d${RESET}  ${RED}BLOCKED: %d${RESET}  ${YELLOW}PARTIAL: %d${RESET}  ${DIM}Total: %d${RESET}\n" \
-  "$count_ok" "$count_blocked" "$count_partial" "$total_domains"
-
-# Чекаем IP сервера нужен для Atlas
+# Чекаем IP сервера и его ASN/org
 CURRENT_IP=$(curl -s -4 --connect-timeout 3 https://api.ipify.org 2>/dev/null)
+CURRENT_ASN=""
+if [[ -n "$CURRENT_IP" ]]; then
+  CURRENT_ASN=$(curl -s --connect-timeout 3 "https://ipinfo.io/${CURRENT_IP}/org" 2>/dev/null | tr -d '\r\n')
+fi
+
+echo "$LINE_SEP"
+printf "${GREEN}OK: %d${RESET}  ${RED}BLOCKED: %d${RESET}  ${YELLOW}PARTIAL: %d${RESET}  ${DIM}Total: %d${RESET}" \
+  "$count_ok" "$count_blocked" "$count_partial" "$total_domains"
+if [[ -n "$CURRENT_ASN" ]]; then
+  printf " ${DIM}|${RESET} ${CYAN}%s${RESET}" "$CURRENT_ASN"
+fi
+echo
 
 if [[ -n "$CURRENT_IP" ]] && [[ -n "$RIPE_API_KEY" ]]; then
   echo "$LINE_SEP"
@@ -533,7 +541,7 @@ if [[ -n "$CURRENT_IP" ]] && [[ -n "$RIPE_API_KEY" ]]; then
   if ! ss -tuln 2>/dev/null | grep -qE "(0\.0\.0\.0|\*|$CURRENT_IP):443\b"; then
     echo -e "${DIM}Радар ТСПУ отменен. Для корректной проверки запустите VPN (Xray/3X-UI)${RESET}"
   else
-    echo -e "Опрос сетей РФ: РТК, МТС, МГТС, Билайн, Corbina, ТТК, РТК-Юг (Сочи)"
+    echo -e "Опрос сетей РФ: РТК, МТС, МГТС, Билайн, ТТК, РТК-Юг, SkyNet, MaxNet"
     
     TMP_ATLAS=$(mktemp)
     TMP_ATLAS_DEBUG=$(mktemp)
@@ -568,7 +576,9 @@ data = {
         {'requested': 4, 'type': 'asn', 'value': 8359,  'tags': {'include': ['system-ipv4-works']}},
         {'requested': 4, 'type': 'asn', 'value': 3216,  'tags': {'include': ['system-ipv4-works']}},
         {'requested': 3, 'type': 'asn', 'value': 20485, 'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 1, 'type': 'asn', 'value': 25490, 'tags': {'include': ['system-ipv4-works']}}
+        {'requested': 1, 'type': 'asn', 'value': 25490, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 2, 'type': 'asn', 'value': 50113, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 35807, 'tags': {'include': ['system-ipv4-works']}}
     ],
     'is_oneoff': True
 }
@@ -595,8 +605,8 @@ for attempt in range(25):
         with urllib.request.urlopen(results_url) as response:
             results = json.loads(response.read().decode())
             elapsed = int(time.time() - start_time)
-            dlog(f'poll {attempt+1}/25 [{elapsed}s]: results={len(results)}/24')
-            if len(results) >= 24: 
+            dlog(f'poll {attempt+1}/25 [{elapsed}s]: results={len(results)}/30')
+            if len(results) >= 30: 
                 break
     except Exception as e:
         dlog(f'poll {attempt+1} error: {type(e).__name__}: {e}')
