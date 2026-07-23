@@ -15,7 +15,7 @@ PROXY=""
 VERBOSE=false
 DEBUG=false
 
-RIPE_API_KEY="5a5edf32-179b-4783-b2a4-e96b0506ce36" 
+RIPE_API_KEY="701dbe65-8a94-4aeb-be3f-90d5978f112e" # Не берите ключ, пожалуйста, можете создать свой на atlas.ripe, это не сложно
 REALITY_SNI="max.ru"
 
 while [[ $# -gt 0 ]]; do
@@ -96,6 +96,22 @@ RKN_STUB_IPS=(
   "80.93.183.168"  # Билайн
   "213.87.154.141" # МТС
   "92.101.255.255" # Мегафон
+)
+
+# Провайдеры
+declare -A ASN_NAMES=(
+  [12389]="Ростелеком"
+  [8402]="Билайн"
+  [25513]="МГТС"
+  [8359]="МТС"
+  [3216]="Билайн"
+  [20485]="ТТК"
+  [25490]="РТК-Юг"
+  [43727]="Мегафон"
+  [12714]="Мегафон"
+  [34757]="Sib Seti"
+  [29124]="Iskratelecom"
+  [12768]="Дом.ру"
 )
 
 is_rkn_spoof() {
@@ -422,54 +438,39 @@ check_domain() {
 animate() {
   local total=$1
   local tmpdir=$2
+  local bar_width=50
   local i=0
-  
-  local frames=(
-    "🤬 🔨       🌐"
-    "🤬  🔨      🌐"
-    "🤬   🔨     🌐"
-    "🤬    🔨    🌐"
-    "🤬     🔨   🌐"
-    "🤬      🔨  🌐"
-    "🤬       💥 💔"
-    "🤬        🔥💨"
-  )
-
-  local funny_texts=(
-    "Роскомнадзор заблокировал сам себя. Ждем..."
-    "Объясняем ТСПУ, что это просто картинки с котиками..."
-    "Маскируем Reality-трафик под доставку ВкусВилл..."
-    "Ищем свободный IP в реестре запрещенных сайтов..."
-    "Оформляем VLESS как доступ к Госуслугам..."
-    "РКН снова забанил 127.0.0.1. Пытаемся выжить..."
-    "Оборачиваем BGP-маршруты в шапочку из фольги..."
-    "Настраиваем передачу пакетов голубиной почтой..."
-    "Спорим с провайдером о цифровой независимости..."
-  )
 
   tput civis 2>/dev/null
 
   while true; do
     local done_count=$(ls "$tmpdir"/*.txt 2>/dev/null | wc -l)
-    
-    local frame_idx=$(( (i / 2) % ${#frames[@]} ))
-    local frame="${frames[$frame_idx]}"
-    
-    local text_idx=$(( (i / 50) % ${#funny_texts[@]} ))
-    local current_text="${funny_texts[$text_idx]}"
-    
-    printf "\r[${GREEN}%2d${RESET}/${YELLOW}%d${RESET}] %s  ${CYAN}%s${RESET}\e[K" \
-      "$done_count" "$total" "$frame" "$current_text"
-    
-    sleep 0.2
+    local percent=$(( done_count * 100 / total ))
+    (( percent > 100 )) && percent=100
+
+    local filled=$(( done_count * bar_width / total ))
+    (( filled > bar_width )) && filled=$bar_width
+    local remaining=$(( bar_width - filled ))
+    (( remaining < 0 )) && remaining=0
+
+    local fill_str empty_str
+    printf -v fill_str  '%*s' "$filled"    ''
+    printf -v empty_str '%*s' "$remaining" ''
+    fill_str="${fill_str// /█}"
+    empty_str="${empty_str// /░}"
+
+    printf "\r  ${CYAN}Scanning${RESET}  [${BLUE}%s${DIM}%s${RESET}]  ${YELLOW}%3d%%${RESET}\e[K" \
+      "$fill_str" "$empty_str" "$percent"
+
+    sleep 0.1
     i=$(( i + 1 ))
   done
 }
 
 clear
-echo "======================================================================"
-echo "              Network Censorship Checker by Nikola Tesla              "
-echo "======================================================================"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e " ${YELLOW}◆${RESET}          ${BLUE}Network Censorship Checker${RESET}  ${DIM}·${RESET}  ${YELLOW}by Nikola Tesla${RESET}          ${YELLOW}◆${RESET} "
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo
 
 printf "%-${DOMAIN_WIDTH}s  %-8s %s\n" "Domain" "Status" "Block Type"
@@ -527,7 +528,7 @@ if [[ -n "$CURRENT_IP" ]]; then
 fi
 
 echo "$LINE_SEP"
-printf "${GREEN}OK: %d${RESET}  ${RED}BLOCKED: %d${RESET}  ${YELLOW}PARTIAL: %d${RESET}  ${DIM}Total: %d${RESET}" \
+printf "${GREEN}OK:%d${RESET}  ${RED}BLOCKED:%d${RESET}  ${YELLOW}PARTIAL:%d${RESET}  ${DIM}Total:%d${RESET}" \
   "$count_ok" "$count_blocked" "$count_partial" "$total_domains"
 if [[ -n "$CURRENT_ASN" ]]; then
   printf " ${DIM}|${RESET} ${CYAN}%s${RESET}" "$CURRENT_ASN"
@@ -541,7 +542,7 @@ if [[ -n "$CURRENT_IP" ]] && [[ -n "$RIPE_API_KEY" ]]; then
   if ! ss -tuln 2>/dev/null | grep -qE "(0\.0\.0\.0|\*|$CURRENT_IP):443\b"; then
     echo -e "${DIM}Радар ТСПУ отменен. Для корректной проверки запустите VPN (Xray/3X-UI)${RESET}"
   else
-    echo -e "Опрос сетей РФ: РТК, МТС, МГТС, Билайн, ТТК, РТК-Юг, SkyNet, MaxNet"
+    echo -e "Опрос сетей РФ: РТК, МТС, МГТС, Билайн, ТТК, РТК-Юг, Мегафон .."
     
     TMP_ATLAS=$(mktemp)
     TMP_ATLAS_DEBUG=$(mktemp)
@@ -570,15 +571,18 @@ data = {
         'af': 4
     }],
     'probes': [
-        {'requested': 4, 'type': 'asn', 'value': 12389, 'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 4, 'type': 'asn', 'value': 8402,  'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 4, 'type': 'asn', 'value': 25513, 'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 4, 'type': 'asn', 'value': 8359,  'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 4, 'type': 'asn', 'value': 3216,  'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 3, 'type': 'asn', 'value': 20485, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 3, 'type': 'asn', 'value': 12389, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 5, 'type': 'asn', 'value': 8402,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 5, 'type': 'asn', 'value': 25513, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 3, 'type': 'asn', 'value': 8359,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 3, 'type': 'asn', 'value': 3216,  'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 2, 'type': 'asn', 'value': 20485, 'tags': {'include': ['system-ipv4-works']}},
         {'requested': 1, 'type': 'asn', 'value': 25490, 'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 2, 'type': 'asn', 'value': 50113, 'tags': {'include': ['system-ipv4-works']}},
-        {'requested': 4, 'type': 'asn', 'value': 35807, 'tags': {'include': ['system-ipv4-works']}}
+        {'requested': 1, 'type': 'asn', 'value': 43727, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 4, 'type': 'asn', 'value': 12714, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 2, 'type': 'asn', 'value': 34757, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 2, 'type': 'asn', 'value': 29124, 'tags': {'include': ['system-ipv4-works']}},
+        {'requested': 2, 'type': 'asn', 'value': 12768, 'tags': {'include': ['system-ipv4-works']}}
     ],
     'is_oneoff': True
 }
@@ -605,8 +609,8 @@ for attempt in range(25):
         with urllib.request.urlopen(results_url) as response:
             results = json.loads(response.read().decode())
             elapsed = int(time.time() - start_time)
-            dlog(f'poll {attempt+1}/25 [{elapsed}s]: results={len(results)}/30')
-            if len(results) >= 30: 
+            dlog(f'poll {attempt+1}/25 [{elapsed}s]: results={len(results)}/33')
+            if len(results) >= 33: 
                 break
     except Exception as e:
         dlog(f'poll {attempt+1} error: {type(e).__name__}: {e}')
@@ -625,15 +629,38 @@ if not results:
     sys.exit(0)
 
 blocked = 0
+blocked_prb_ids = []
 for probe in results:
     if 'cert' in probe or 'method' in probe or 'alert' in probe:
         pass 
     else:
-        blocked += 1 
+        blocked += 1
+        prb_id = probe.get('prb_id')
+        if prb_id:
+            blocked_prb_ids.append(prb_id)
 
 total = len(results)
 success = total - blocked
 print(f'OK {total} {success} {blocked}')
+
+blocked_asns = {}
+if blocked_prb_ids:
+    try:
+        ids_str = ','.join(str(p) for p in blocked_prb_ids)
+        probes_url = f'https://atlas.ripe.net/api/v2/probes/?id__in={ids_str}&fields=id,asn_v4'
+        with urllib.request.urlopen(probes_url, timeout=10) as response:
+            probe_info = json.loads(response.read().decode())
+            for p in probe_info.get('results', []):
+                asn = p.get('asn_v4')
+                if asn:
+                    blocked_asns[asn] = blocked_asns.get(asn, 0) + 1
+            dlog(f'blocked asns: {blocked_asns}')
+    except Exception as e:
+        dlog(f'probe info error: {type(e).__name__}: {e}')
+
+if blocked_asns:
+    parts = ' '.join(f'{asn}:{cnt}' for asn, cnt in blocked_asns.items())
+    print(f'BLOCKED_ASN {parts}')
     " "$RIPE_API_KEY" "$CURRENT_IP" "$REALITY_SNI" "$DEBUG" > "$TMP_ATLAS" 2>"$TMP_ATLAS_DEBUG" &
     
     ATLAS_PID=$!
@@ -668,12 +695,14 @@ print(f'OK {total} {success} {blocked}')
     ATLAS_RESULT=$(cat "$TMP_ATLAS")
     rm -f "$TMP_ATLAS"
 
-    STATUS=$(echo "$ATLAS_RESULT" | awk '{print $1}')
-    
+    FIRST_LINE=$(echo "$ATLAS_RESULT" | head -n1)
+    BLOCKED_ASN_LINE=$(echo "$ATLAS_RESULT" | grep "^BLOCKED_ASN" | head -n1)
+    STATUS=$(echo "$FIRST_LINE" | awk '{print $1}')
+
     if [[ "$STATUS" == "OK" ]]; then
-      TOTAL_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $2}')
-      SUCCESS_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $3}')
-      BLOCKED_PROBES=$(echo "$ATLAS_RESULT" | awk '{print $4}')
+      TOTAL_PROBES=$(echo "$FIRST_LINE" | awk '{print $2}')
+      SUCCESS_PROBES=$(echo "$FIRST_LINE" | awk '{print $3}')
+      BLOCKED_PROBES=$(echo "$FIRST_LINE" | awk '{print $4}')
       
       if (( TOTAL_PROBES > 0 )); then
         SUCCESS_PERCENT=$(( SUCCESS_PROBES * 100 / TOTAL_PROBES ))
@@ -686,7 +715,7 @@ print(f'OK {total} {success} {blocked}')
         STAT_TEXT="ПОЛНЫЙ ДОСТУП ИЗ РФ"
       elif (( SUCCESS_PERCENT > 50 )); then
         COLOR=$YELLOW
-        STAT_TEXT="ВОЗМОЖНАЯ БЛОКИРОВКА IP (Дропы у части провайдеров)"
+        STAT_TEXT="ЧАСТИЧНАЯ БЛОКИРОВКА IP (Дропы у части провайдеров)"
       else
         COLOR=$RED
         STAT_TEXT="КРИТИЧНАЯ БЛОКИРОВКА ТСПУ (IP недоступен)"
@@ -694,9 +723,61 @@ print(f'OK {total} {success} {blocked}')
 
       echo -e "Зондов ответило: ${CYAN}${TOTAL_PROBES}${RESET} | Пробились: ${GREEN}${SUCCESS_PROBES}${RESET} | Заблокированы: ${RED}${BLOCKED_PROBES}${RESET}"
       echo -e "ТСПУ Статус: ${COLOR}${SUCCESS_PERCENT}% ${STAT_TEXT}${RESET}"
-      
+
+      if [[ -n "$BLOCKED_ASN_LINE" ]]; then
+        BLOCKED_PARTS=${BLOCKED_ASN_LINE#BLOCKED_ASN }
+
+        declare -A NAME_COUNTS=()
+        NAME_ORDER=()
+        for part in $BLOCKED_PARTS; do
+          asn="${part%%:*}"
+          cnt="${part##*:}"
+          name="${ASN_NAMES[$asn]:-AS$asn}"
+          if [[ -z "${NAME_COUNTS[$name]:-}" ]]; then
+            NAME_ORDER+=("$name")
+            NAME_COUNTS[$name]=$cnt
+          else
+            NAME_COUNTS[$name]=$(( NAME_COUNTS[$name] + cnt ))
+          fi
+        done
+
+        BLOCK_MAX_WIDTH=70
+        BLOCK_PREFIX_LEN=11      
+        BLOCK_INDENT="           " 
+
+        current_line="${DIM}Блокируют:${RESET} "
+        current_width=$BLOCK_PREFIX_LEN
+        is_first=true
+
+        for name in "${NAME_ORDER[@]}"; do
+          cnt="${NAME_COUNTS[$name]}"
+          visible="${name} ${cnt}"
+          vlen=${#visible}
+          colored="${RED}${name}${RESET} ${DIM}${cnt}${RESET}"
+
+          if $is_first; then
+            current_line+="$colored"
+            current_width=$((current_width + vlen))
+            is_first=false
+          else
+            needed=$((2 + vlen))   
+            if (( current_width + needed > BLOCK_MAX_WIDTH )); then
+              current_line+="${DIM},${RESET}"
+              echo -e "$current_line"
+              current_line="${BLOCK_INDENT}${colored}"
+              current_width=$((BLOCK_PREFIX_LEN + vlen))
+            else
+              current_line+="${DIM},${RESET} ${colored}"
+              current_width=$((current_width + needed))
+            fi
+          fi
+        done
+
+        echo -e "$current_line"
+      fi
+
     else
-      echo -e "${YELLOW}Не удалось получить данные.${RESET}"
+      echo -e "${YELLOW}Не удалось получить данные, попробуйте позже${RESET}"
     fi
 
     if $DEBUG && [[ -s "$TMP_ATLAS_DEBUG" ]]; then
