@@ -37,15 +37,11 @@
 
 ## 🚀 Запуск
 
-### 🌐 Короткая ссылка
-```bash
-wget -qO- censorcheck.tlab.pw | bash
-```
 
----
+ё
 
 ### 🔧 Запуск (с GitHub)
 ```bash
-wget -qO- https://raw.githubusercontent.com/Nokola-Tesla/censorcheck/main/censorcheck.sh | bash
+wget -qO- https://raw.githubusercontent.com/hy1lite/censorcheck/main/censorcheck.sh | bash
 ```
 
